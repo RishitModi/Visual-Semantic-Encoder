@@ -1,36 +1,38 @@
 # 🖼️ Image Captioning Generator
 
-An end-to-end deep learning project that generates **descriptive, human-like captions for images** using an **encoder–decoder architecture with attention mechanisms**.
+An end-to-end deep learning project that generates **clear and meaningful captions for images** using an encoder-decoder model with an attention mechanism.
 
 ---
 
 ## 📌 Project Overview
 
-This project implements an **Image Captioning System** capable of understanding visual content and generating meaningful textual descriptions. It combines computer vision and natural language processing techniques to bridge the gap between images and language.
+This project builds an **Image Captioning System** that understands the content of an image and generates a suitable text description. It combines computer vision and natural language processing (NLP) to connect images with language.
 
 ### Core Components
-- **Encoder (CNN):** Extracts high-level visual features from images
-- **Decoder (RNN / LSTM):** Generates captions word-by-word
-- **Attention Mechanism:** Focuses on relevant regions of the image while generating each word
 
-The project supports **quantitative evaluation** using BLEU scores and **qualitative analysis** through attention heatmap visualizations.
+- **Encoder (CNN):** Extracts important features from an image.
+- **Decoder (RNN/LSTM):** Generates a caption one word at a time.
+- **Attention Mechanism:** Focuses on important parts of the image while generating each word.
+
+The project evaluates caption quality using **BLEU scores** and shows how the model focuses on different parts of an image using attention heatmaps.
 
 ---
 
 ## ✨ Features
 
-- End-to-end trainable image captioning model
-- Caption generation for unseen images
-- Attention visualization for interpretability
-- Evaluation using BLEU-1 to BLEU-4 metrics
-- Modular and extensible codebase for experimentation
+- Trainable image captioning model.
+- Generates captions for new images.
+- Visualizes attention using heatmaps.
+- Evaluates captions using BLEU-1, BLEU-2, BLEU-3, and BLEU-4 scores.
+- Uses a modular code structure that can be easily extended and tested.
 
 ---
 
 ## 📊 Results & Visualizations
 
 ### 📈 Training Convergence
-The following plot illustrated the reduction in Cross-Entropy Loss over the training epochs. The convergence of the validation loss indicates the model's ability to generalize to unseen images.
+
+The plot below shows how the cross-entropy loss changes over the training epochs. A decrease in training and validation loss indicates that the model is learning to generate better captions. The validation loss also helps measure how well the model performs on images it has not seen during training.
 
 <p align="center">
   <img src="images/new_loss_curve.png" width="600" alt="Training Loss Curve">
@@ -110,8 +112,8 @@ image-captioning/
 
 ### 1️⃣ Clone the repository
 ```bash
-git clone https://github.com/your-username/image-captioning.git
-cd image-captioning
+git https://github.com/RishitModi/Visual-Semantic-Encoder.git
+cd Visual-Semantic-Encoder
 ```
 ### 2️⃣ Create and activate a virtual environment
 ```
@@ -158,37 +160,38 @@ python src/visualize.py \
 ---
 ## 📊 Evaluation Metrics
 
-The model is evaluated using standard image captioning metrics to measure caption quality and accuracy.
+The model is evaluated using common image captioning metrics to measure the quality of the generated captions.
 
-- **BLEU-1 to BLEU-4** – Measures n-gram overlap between generated and reference captions.
+- **BLEU-1 to BLEU-4:** Measures how closely the generated captions match the reference captions based on matching words and phrases.
 
 ### Optional Metrics
-- **METEOR**
-- **ROUGE**
-- **CIDEr**
 
-These metrics help assess the accuracy and fluency of the generated captions.
+- **METEOR:** Measures caption quality by comparing words and their meanings.
+- **ROUGE:** Measures the overlap between generated and reference captions.
+- **CIDEr:** Measures how well the generated captions match human-written captions.
+
+These metrics help evaluate how accurate and meaningful the generated captions are.
 
 ---
 
 ## 📈 Future Enhancements
-- Transformer-based captioning models
-- Beam search decoding
-- Pretrained vision encoders (ResNet, EfficientNet)
-- CIDEr and SPICE metric integration
-- Web-based demo for real-time caption generation
+
+- Use Transformer-based models for better caption generation.
+- Apply beam search to generate better captions.
+- Use pretrained image encoders such as ResNet and EfficientNet.
+- Add CIDEr and SPICE evaluation metrics.
+- Build a web-based demo for generating captions from images in real time.
 
 ---
 
 ## 📚 Learning Outcomes
-- Encoder–decoder architectures
-- Attention mechanisms in deep learning
-- CNN-based feature extraction
-- Sequence modeling with RNNs / LSTMs
-- NLP evaluation metrics
-- Model interpretability using attention visualization
 
----
+- Understanding encoder-decoder architectures.
+- Learning how attention mechanisms work in deep learning.
+- Extracting image features using CNNs.
+- Generating text sequences using RNNs and LSTMs.
+- Evaluating captions using NLP metrics.
+- Understanding model predictions through attention visualizations.
 
-## 👤 Author
-- Aryan Doshi
+## 👤 Built By
+- Rishit Modi
