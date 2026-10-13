@@ -1,5 +1,25 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+
+# Model checkpoints
 *.pth
+
+# Dataset (large files, not committed)
 /data/train2017/
 /data/val2017/
+/data/annotations/
+
+# Training outputs
+runs/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Virtual environments
+venv/
+.venv/
