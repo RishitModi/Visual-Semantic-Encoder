@@ -4,7 +4,6 @@
 
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)
-![CI](https://github.com/RishitModi/Visual-Semantic-Encoder/actions/workflows/ci.yml/badge.svg)
 
 <p align="center">
   <img src="images/heatmap_image-2.png" width="900" alt="Attention heatmap: a woman holding a plate of food while standing in a kitchen">
@@ -248,7 +247,6 @@ Visual-Semantic-Encoder/
 │       ├── checkpoint.py        # Save / load checkpoints
 │       ├── visualization.py     # Caption generation & attention overlay
 │       └── evaluation.py        # BLEU-1 / BLEU-4 via NLTK
-├── tests/                       # pytest test suite (CPU, no data)
 ├── docs/
 │   ├── KNOWN_ISSUES.md          # Limitations of the original experiment
 │   └── assets/                  # Moved attention-map screenshots
