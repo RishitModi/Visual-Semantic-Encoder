@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Generate captions for images with a custom CNN + attention + LSTM model trained on MS COCO.">
+  <meta name="theme-color" content="#4c5ee8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='.9em' font-size='56'%3E%F0%9F%96%BC%EF%B8%8F%3C/text%3E%3C/svg%3E">
+  <title>Image Caption Generator</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/config.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="page-shell">
+    <section class="card" aria-labelledby="page-title">
+      <header class="intro">
+        <p class="eyebrow">Visual intelligence</p>
+        <h1 id="page-title">Image Caption Generator</h1>
+        <p class="description">Upload an image and let the model describe what it sees.</p>
+      </header>
+
+      <div id="upload-state">
+        <div class="upload-area" id="upload-area" tabindex="0" role="button"
+             aria-label="Choose an image or drag and drop one here">
+          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+          <label class="upload-label" for="file-input">
+            <span class="upload-icon" aria-hidden="true">↑</span>
+            <span class="upload-title">Choose an image</span>
+            <span class="upload-hint">or drag and drop PNG, JPEG, or WEBP here</span>
+            <span class="upload-limit">Maximum size: 5 MB</span>
+          </label>
+        </div>
+        <p class="message error-message" id="upload-error" role="alert" hidden></p>
+        <div class="examples" id="examples">
+          <p>No image? Try an example:</p>
+          <div class="example-list" id="example-list"></div>
+        </div>
+      </div>
+
+      <section class="result-panel" id="result-state" aria-labelledby="result-title" hidden>
+        <h2 id="result-title" class="visually-hidden">Caption result</h2>
+        <div class="result-columns">
+          <div class="preview-frame">
+            <img id="preview-image" alt="Selected image preview">
+          </div>
+          <div class="result-content">
+            <div class="status-row" id="loading-state" aria-live="polite" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              <span>Generating caption...</span>
+            </div>
+            <p class="caption" id="caption" aria-live="polite"></p>
+            <p class="message error-message" id="result-error" role="alert" hidden></p>
+            <div class="heatmap-controls" id="heatmap-controls" hidden>
+              <button class="button secondary" id="heatmap-toggle" type="button">Show heatmap</button>
+            </div>
+            <div class="actions">
+              <button class="button secondary" id="retry-button" type="button" hidden>Try again</button>
+              <button class="button primary" id="choose-button" type="button">Choose another image</button>
+            </div>
+          </div>
+        </div>
+        <section class="heatmap-figure" id="heatmap-figure" aria-labelledby="heatmap-heading" hidden>
+          <div class="heatmap-figure-header">
+            <h2 id="heatmap-heading">Where the model looked for each word</h2>
+            <button class="button secondary" id="download-button" type="button">Download heatmap</button>
+          </div>
+          <div class="heatmap-grid" id="heatmap-grid"></div>
+        </section>
+      </section>
+      <footer class="footer">
+        <span>Captions come from a custom CNN + attention + LSTM model trained on MS COCO. They can be wrong, especially for unusual images.</span>
+        <a id="repo-link" href="#" target="_blank" rel="noreferrer" hidden>Source code</a>
+      </footer>
+    </section>
+  </main>
+</body>
+</html>

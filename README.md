@@ -1,323 +1,582 @@
-# Visual-Semantic-Encoder
+# Image Captioning Generator
 
-**Image captioning with a CNN encoder and LSTM decoder with soft attention, trained on MS COCO 2017.**
+This project is a PyTorch image captioning system that generates natural-language captions from input images using a custom ResNet-50-style CNN encoder, additive attention, and an LSTM-based decoder. The implementation is intentionally compact and research-oriented: it reads COCO-style caption annotations, builds a vocabulary from the training captions, trains an encoder-decoder model with teacher forcing, and can generate captions and attention maps for individual images.
 
-![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)
+The repository is structured as a small educational / research codebase rather than a production web app or packaged framework. The implementation and training flow are defined directly in the Python source files and can be executed from the project root.
 
-<p align="center">
-  <img src="images/heatmap_image-2.png" width="900" alt="Attention heatmap: a woman holding a plate of food while standing in a kitchen">
-  <br>
-  <em>Per-word attention heatmaps produced by the model — brighter regions show where the model focuses while generating each word.</em>
-</p>
+## Project overview
 
----
+The actual model pipeline in this repository is:
 
-## How It Works
+Image
+→ image preprocessing
+→ custom ResNet-50-style CNN encoder
+→ spatial feature embedding
+→ additive attention
+→ LSTM decoder
+→ vocabulary projection
+→ generated caption
 
-The system follows a standard encoder–decoder architecture with additive (Bahdanau) attention:
+The architecture is implemented through the modules in the `models/` directory, while dataset loading, vocabulary construction, checkpoint handling, evaluation, and visualization utilities live under `utils/` and `inference/`.
 
-```mermaid
-flowchart LR
-    A["Input image<br/>(3 × 224 × 224)"] --> B["Custom CNN<br/>5 strided conv blocks<br/>(3→32→64→128→256→512)"]
-    B --> C["49 region vectors<br/>(B, 49, 256)"]
-    C --> D["Additive attention<br/>(Bahdanau)"]
-    D --> E["LSTMCell loop<br/>(hidden: 512)"]
-    E --> F["Next-word logits<br/>(vocab_size)"]
-    E -->|"h_t"| D
-```
+## Highlights
 
-1. **Encoder** — A 5-layer strided convolutional network (trained from scratch, not a pretrained backbone) processes a 224×224 RGB image into a 7×7 grid of 512-dimensional feature maps, projected to 256 dimensions. This yields **49 spatial region vectors**.
-2. **Attention** — At each decoding step, an additive (Bahdanau) attention module scores each of the 49 regions against the decoder's previous hidden state, producing a softmax-weighted context vector. The attention weights are also used to generate the heatmap visualisations shown above.
-3. **Decoder** — An `LSTMCell` receives the concatenation of the current word embedding and the attention context at each step, and predicts the next word via a linear output layer. Decoding uses greedy argmax (beam search is not implemented).
+- Custom ResNet-50-style CNN encoder for spatial feature extraction
+- Additive soft attention between encoder features and decoder hidden state
+- LSTMCell-based decoder for autoregressive caption generation
+- Vocabulary tokenization and numericalization from COCO captions
+- Teacher-forcing training with shifted target captions
+- Checkpoints that also carry the vocabulary, plus a `vocab.txt` written during training
+- Resumable training (`--resume`)
+- COCO 2017 dataset support with configurable dataset path
+- BLEU-based evaluation via NLTK
+- Attention-map visualization for generated captions
+- CPU-first training/inference with optional CUDA when available
 
----
+## Example outputs from the project
 
-## Results
+> The example images below were generated with an earlier encoder version, so captions from the current model may differ.
 
-### Training Loss
+The repository includes example result images under the `images/` directory. These are useful for understanding the type of output produced by the captioning pipeline: a model-generated caption is compared against the visual content of the image, and the attention maps show which image regions were emphasized while each word was being produced.
 
-The training loss (cross-entropy) over the course of training. The plot covers approximately 75 epochs, with the loss decreasing to about 1.15. This is **training loss only**; no validation curve was recorded.
-
-<p align="center">
-  <img src="images/new_loss_curve.png" width="600" alt="Training loss curve over ~75 epochs">
-</p>
-
-### Quantitative Results
-
-| Metric | Score | Note |
-|--------|-------|------|
-| BLEU-1 | 0.39 | Reported by the author from the original run |
-| BLEU-4 | 0.13 | Reported by the author from the original run |
-
-> The exact evaluation setup of the reported run (data split, number of references, decoding strategy) is not recorded in the repository. See [Limitations](#limitations) and [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) for details.
-
-### Sample Outputs
-
-Sample captions generated by the model. Outputs are imperfect — dropped words and awkward phrasing are expected given the encoder is trained from scratch without a pretrained backbone.
-
-| Sample 1 | Sample 2 | Sample 3 |
-| :---: | :---: | :---: |
-| <img src="images/output_image1.png" width="350"> | <img src="images/output_image2.png" width="350"> | <img src="images/output_image3.png" width="350"> |
-| *"a and propeller plane on tarmac runway mountains"* | *"a woman holds a dish with food in it"* | *"a and motorcycle on sidewalk parked"* |
-
-<br>
-
-| Sample 4 | Sample 5 |
-| :---: | :---: |
-| <img src="images/output_image4.png" width="350"> | <img src="images/output_image5.png" width="350"> |
-| *"four urinals in a public restroom with window"* | *"a car street a and bus"* |
-
-### Attention Heatmaps
-
-The attention mechanism allows the model to focus on different spatial regions while generating each word. In the heatmaps below, brighter areas indicate where the model placed its focus for the corresponding word.
+### Generated caption examples
 
 <p align="center">
-  <img src="images/heatmap_image-2.png" width="900" alt="Attention heatmap — kitchen scene">
-  <br>
-  <img src="images/heatmap_other.png" width="900" alt="Attention heatmap — ski resort scene">
-  <br>
-  <em>Per-word attention heatmaps showing spatial focus during caption generation.</em>
+    <img src="images/output_image1.png" width="260" alt="Example generated caption 1">
+    <img src="images/output_image2.png" width="260" alt="Example generated caption 2">
+    <img src="images/output_image3.png" width="260" alt="Example generated caption 3">
 </p>
 
----
+<p align="center">
+    <img src="images/output_image4.png" width="260" alt="Example generated caption 4">
+    <img src="images/output_image5.png" width="260" alt="Example generated caption 5">
+</p>
 
-## Design Decisions and What I Learned
+These outputs show the model producing short, image-grounded descriptions such as identifying a person, vehicle, object, or scene. The model is not designed to generate highly polished captions every time; it is a compact research implementation that favors clear visual grounding over production-level language quality.
 
-I built this project to understand the encoder–decoder captioning pipeline end-to-end, from raw pixels to generated text.
+### Attention-map examples
 
-**Why additive (Bahdanau) attention?**  I wanted to implement the classic attention mechanism from scratch rather than relying on a library. Bahdanau attention is straightforward to implement and produces interpretable per-word attention maps — the heatmaps above are a direct visualisation of the learned attention weights, not a separate explainability tool.
+<p align="center">
+    <img src="images/heatmap_image-2.png" width="420" alt="Attention map showing model focus on image regions">
+    <img src="images/heatmap_other.png" width="420" alt="Second attention map showing model focus on image regions">
+</p>
 
-**Why a from-scratch CNN instead of a pretrained ResNet?** Using a simple 5-layer convolutional encoder meant I had to understand every part of the feature extraction pipeline. The trade-off is clear: captions are rougher than what a pretrained backbone would produce, but the learning value was high.
+The attention maps highlight the spatial regions the model focused on while predicting particular words. In these visualizations, brighter areas indicate stronger attention. This makes the decoder easier to inspect: instead of being a black box, it can be interpreted as choosing the image regions most relevant to a word such as an object, person, or scene element.
 
-**What the attention maps show.** Each map is the 7×7 softmax attention distribution (49 regions), resized back to image dimensions. On good examples (like the kitchen heatmap), you can see the model shifting focus — "woman" highlights the person, "plate" highlights the object in her hands. On weaker examples, the attention is more diffuse, which lines up with the less coherent captions.
-
-**What I'd do differently next time:**
-- **Held-out evaluation**: evaluate on the COCO validation set with all five reference captions per image, which is the standard protocol.
-- **Pretrained encoder**: swap the from-scratch CNN for a frozen or fine-tuned ResNet/EfficientNet backbone — this alone would likely improve BLEU scores substantially.
-- **Beam search**: replace greedy decoding to find higher-probability caption sequences.
-- **More metrics**: add METEOR, CIDEr, and ROUGE-L alongside BLEU.
-
----
-
-## Installation
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/RishitModi/Visual-Semantic-Encoder.git
-cd Visual-Semantic-Encoder
-```
-
-### 2. Create a virtual environment (recommended)
-
-```bash
-python -m venv venv
-# Linux / macOS
-source venv/bin/activate
-# Windows
-venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-> **Note:** The original trained weights (`checkpoint_img_caption.pth`) are not included in the repository (`*.pth` is gitignored). All results shown above were produced on a different machine during the original training run.
-
----
-
-## Usage
-
-All entry points are runnable as Python modules from the repository root.
-
-### Train the model
-
-```bash
-python -m vse.train \
-    --data_dir /path/to/coco2017 \
-    --save_dir runs/ \
-    --epochs 60 \
-    --batch_size 32
-```
-
-The training script defaults to 60 epochs; the loss plot shown above covers approximately 75 epochs. A checkpoint and a `vocab.json` file are saved to `--save_dir` after each epoch.
-
-To resume from a checkpoint:
-
-```bash
-python -m vse.train \
-    --data_dir /path/to/coco2017 \
-    --save_dir runs/ \
-    --resume runs/checkpoint_img_caption.pth
-```
-
-### Generate a caption for a single image
-
-```bash
-python -m vse.caption \
-    --image path/to/image.jpg \
-    --checkpoint runs/checkpoint_img_caption.pth \
-    --vocab runs/vocab.json
-```
-
-### Visualise attention heatmaps
-
-```bash
-python -m vse.attention \
-    --image path/to/image.jpg \
-    --checkpoint runs/checkpoint_img_caption.pth \
-    --vocab runs/vocab.json \
-    --save attention_output.png
-```
-
-### Evaluate BLEU scores
-
-```bash
-python -m vse.evaluate \
-    --checkpoint runs/checkpoint_img_caption.pth \
-    --vocab runs/vocab.json \
-    --data_dir /path/to/coco2017 \
-    --num_eval 1000
-```
-
-> **Note:** This evaluates on the first `--num_eval` items of the training annotation list (not a held-out split), with a single reference caption per image and greedy decoding. See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
-
----
-
-## Data
-
-This project uses the [MS COCO 2017](https://cocodataset.org/) dataset. The full training split contains approximately 118,000 images, each with about 5 human-written captions.
-
-Expected directory layout under `--data_dir`:
-
-```text
-coco2017/
-├── train2017/                # Training images
-│   ├── 000000000009.jpg
-│   ├── 000000000025.jpg
-│   └── ...
-├── val2017/                  # Validation images (not used by this repo)
-│   └── ...
-└── annotations/
-    ├── captions_train2017.json   # Captions for training images
-    └── captions_val2017.json     # Captions for validation images
-```
-
-Each image can have multiple captions (typically 5). The folder names and annotation file names must match the paths expected by the code.
-
-The original training run used 20,000+ images and 90,000+ captions from the training split. The vocabulary was built from these captions with a frequency threshold of 5, resulting in 5K+ tokens.
-
-### Producing `vocab.json` from annotations
-
-When you run `python -m vse.train`, a `vocab.json` is saved automatically to `--save_dir`. For inference you only need this file, not the raw annotations:
-
-```python
-from vse.data import Vocabulary
-vocab = Vocabulary.load("runs/vocab.json")
-```
-
----
-
-## Project Structure
+## Repository structure
 
 ```text
 Visual-Semantic-Encoder/
-├── vse/                         # Main package
-│   ├── __init__.py
-│   ├── train.py                 # Training entry point
-│   ├── evaluate.py              # BLEU evaluation entry point
-│   ├── caption.py               # Single-image captioning CLI
-│   ├── attention.py             # Attention heatmap CLI
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── encoder.py           # EncoderCNN (5-layer strided conv)
-│   │   ├── attention.py         # Bahdanau additive attention
-│   │   ├── decoder.py           # DecoderWithAttention (LSTMCell)
-│   │   └── combined_model.py    # CombinedModel (encoder + decoder)
-│   ├── data/
-│   │   ├── __init__.py
-│   │   ├── vocab.py             # Vocabulary (build, save, load)
-│   │   └── dataset.py           # CocoDataset, CaptionCollator
-│   └── utils/
-│       ├── __init__.py
-│       ├── config.py            # Default hyperparameter dataclass
-│       ├── checkpoint.py        # Save / load checkpoints
-│       ├── visualization.py     # Caption generation & attention overlay
-│       └── evaluation.py        # BLEU-1 / BLEU-4 via NLTK
-├── docs/
-│   ├── KNOWN_ISSUES.md          # Limitations of the original experiment
-│   └── assets/                  # Moved attention-map screenshots
-├── images/                      # Result images (loss curve, samples, heatmaps)
-├── models/                      # Original model files (pre-refactor)
-├── utils/                       # Original utility files (pre-refactor)
-├── inference/                   # Original inference scripts (pre-refactor)
+├── README.md
 ├── requirements.txt
 ├── .gitignore
-└── README.md
+├── train.py
+├── data/
+│   └── MSCOCO.txt
+├── images/
+│   ├── heatmap_image-2.png
+│   ├── heatmap_other.png
+│   ├── loss_curve.png
+│   ├── new_loss_curve.png
+│   ├── output_image1.png
+│   ├── output_image2.png
+│   ├── output_image3.png
+│   ├── output_image4.png
+│   └── output_image5.png
+├── checkpoints_custom/
+│   ├── checkpoint_best.pth
+│   ├── checkpoint_img_caption.pth
+│   └── metrics.json
+├── scripts/
+│   └── repack_pth.py
+├── inference/
+│   ├── caption_pred.py
+│   └── metric_eval.py
+├── models/
+│   ├── attention.py
+│   ├── combined_model.py
+│   ├── decoder.py
+│   └── encoder.py
+└── utils/
+    ├── checkpoint.py
+    ├── dataset.py
+    ├── evaluation.py
+    ├── visualization.py
+    └── vocab.py
 ```
 
+## Model architecture
+
+The model is an encoder-decoder captioning network: a custom ResNet-50-style CNN image encoder, additive attention, and an LSTM decoder. It is not a transformer.
+
+### Encoder
+
+Implemented in `models/encoder.py`.
+
+The encoder is a custom ResNet-50-style bottleneck CNN with 3-4-6-3 blocks. It is written from scratch, randomly initialised with Kaiming initialisation, and trained end to end. It has no pretrained weights and does not download ImageNet weights.
+
+- Input: `(B, 3, 224, 224)`
+- ResNet-50-style bottleneck stages -> feature map `(B, 2048, 7, 7)`
+- after permute and reshape: `(B, 49, 2048)` (49 regions)
+- Dropout(0.3)
+- Linear(2048, 256) -> `(B, 49, 256)`
+
+`EncoderCNN(embed_size)` is defined in `models/encoder.py` and is fully trainable.
+
+### Attention mechanism
+
+Implemented in `models/attention.py`.
+
+This is additive / soft attention:
+
+- `encoder_att`: linear projection from encoder dimension to attention dimension
+- `decoder_att`: linear projection from decoder hidden state to attention dimension
+- `tanh(encoder_att + decoder_att)`
+- `full_att` produces a scalar attention score per spatial location
+- `softmax` across all spatial positions
+- weighted context vector: `(encoder_out * alpha).sum(dim=1)`
+
+The attention module returns:
+
+- `context`: `(B, encoder_dim)`
+- `alpha`: attention weights of shape `(B, num_pixels, 1)`
+
+### Decoder
+
+Implemented in `models/decoder.py`.
+
+The decoder uses:
+
+- `nn.Embedding(vocab_size, embed_size)`
+- `nn.LSTMCell(embed_size + embed_size, hidden_size)`
+- `nn.Linear(hidden_size, vocab_size)`
+- dropout before the final vocab projection
+
+The decoder receives:
+
+- encoder output: `(B, num_pixels, embed_size)`
+- caption tokens: `(B, T)`
+
+The decoder shifts the captions itself: it reads `captions[:, :-1]` as input, and its outputs are compared to `captions[:, 1:]` using teacher forcing.
+
+### Combined model
+
+Implemented in `models/combined_model.py`.
+
+The model wrapper simply connects:
+
+`EncoderCNN` (ResNet-50) -> `DecoderWithAttention`
+
+with the forward pass:
+
+```python
+encoder_out = self.encoder(images)
+outputs = self.decoder(encoder_out, captions)
+```
+
+The output shape is `(B, T-1, vocab_size)`.
+
+## Data flow
+
+The training data pipeline in this repository is:
+
+1. Read COCO caption JSON file from the dataset annotations directory.
+2. Map each `image_id` to the corresponding image filename.
+3. Build a list of `(image_path, caption)` pairs.
+4. Tokenize captions using the vocabulary logic.
+5. Convert tokens into integer IDs.
+6. Add `<SOS>` and `<EOS>` around each caption.
+7. Prepare a PyTorch `Dataset` that returns image tensor + caption tensor.
+8. Pad captions in a batch with `<PAD>` tokens.
+9. Feed the image batch and shifted caption batch into the model.
+10. Compute cross-entropy loss against the shifted target captions.
+
+## Training pipeline
+
+The actual training logic lives in `train.py` and uses the following default configuration:
+
+- `--dataset-dir` default: `data/coco2017`
+- `--epochs` default: `10`
+- `--batch-size` default: `64`
+- `--subset-size` default: `100000` (`0` uses all captions)
+- `--lr` default: `4e-4` (AdamW with a cosine schedule)
+- `--val-subset-size` default: `5000` (`0` skips validation)
+- `--weight-decay` default: `1e-4`
+- `--seed` default: `42`
+- `--no-amp` default: disabled
+- `--freq-threshold` default: `5`
+- `--num-workers` default: `0` on Windows, `2` elsewhere
+- `--checkpoint-dir` default: `checkpoints_custom`
+- `--resume` optional: continue from an existing checkpoint
+
+The script performs the following steps:
+
+1. Reads the COCO `captions_train2017.json` file.
+2. Builds a vocabulary from all training captions and saves it to `checkpoints_custom/vocab.txt`.
+3. Creates `CocoDataset` instances using the image/caption pairs.
+4. Selects a subset of samples using `Subset(dataset, range(subset_size))`.
+5. Constructs a `DataLoader` with `collate_fn=partial(collate_fn, vocab=vocab)`.
+6. Instantiates the custom CNN model and the optimizer.
+7. Trains using `nn.CrossEntropyLoss(ignore_index=vocab.stoi["<PAD>"])` with gradient clipping.
+8. Runs validation after each epoch.
+9. Saves `checkpoint_img_caption.pth`, `checkpoint_best.pth`, and `metrics.json` in the checkpoint directory.
+10. Writes a loss curve with train and validation lines.
+
+The optimizer updates all trainable model parameters:
+
+```python
+torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=args.lr)
+```
+
+The model runs on:
+
+```python
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+```
+
+This means the project is written to support CPU execution and optional CUDA execution when available, but the repository does not assume CUDA is present.
+
+## Vocabulary and tokenization
+
+The vocabulary implementation is in `utils/vocab.py`.
+
+Special tokens are defined as:
+
+- `0: "<PAD>"`
+- `1: "<SOS>"`
+- `2: "<EOS>"`
+- `3: "<UNK>"`
+
+The tokenizer lowercases text and extracts words using a regex-based word split:
+
+```python
+re.findall(r"\b\w+\b", text)
+```
+
+The vocabulary is built by counting tokens across the training captions and keeping words whose frequency is greater than or equal to the configured threshold.
+
+The numericalization step maps each word to its integer ID, falling back to `<UNK>` when a word is not in the vocabulary.
+
+## Data preprocessing
+
+Training and inference apply the following transforms, defined in `build_transform()` in `utils/dataset.py`:
+
+```python
+transforms.Resize((224, 224))
+transforms.ToTensor()
+transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225],
+)
+```
+
+This matches the standard ImageNet-like normalization used for the encoder input. Images are loaded as RGB using Pillow before transformation.
+
+## Dataset assumptions
+
+The repository expects a COCO 2017 dataset root with a structure like:
+
+```text
+<dataset_dir>/
+├── train2017/
+│   ├── 000000000001.jpg
+│   ├── 000000000002.jpg
+│   └── ...
+└── annotations/
+    └── captions_train2017.json
+```
+
+For BLEU evaluation the dataset also needs `val2017/` and `annotations/captions_val2017.json`.
+
+The layout is also described in `data/MSCOCO.txt`.
+
+Important notes:
+
+- The dataset itself is not included in the repository.
+- The code expects the COCO data to exist locally.
+- There is no automatic download step in the project.
+- The training script accepts a dataset directory via `--dataset-dir`.
+
+## Checkpointing
+
+Checkpoint behavior is implemented in `utils/checkpoint.py`.
+
+`save_checkpoint` stores:
+
+- `epoch`
+- `model_state_dict`
+- `optimizer_state_dict`
+- `loss`
+- `vocab_itos` (the vocabulary, so the checkpoint is self-contained)
+
+`train.py` also writes the vocabulary to `checkpoints_custom/vocab.txt` (one `index:word` line per entry). The default checkpoint path is:
+
+```text
+checkpoints_custom/checkpoint_img_caption.pth
+```
+
+The checkpoint directory is created automatically if it does not exist. Checkpoints are not committed to the repository (see `.gitignore`).
+The training script refuses to overwrite an existing checkpoint unless `--resume` is used. `metrics.json` is written next to the checkpoints.
+
+For inference, `load_for_inference(checkpoint_path, vocab_path=None, device="cpu")` rebuilds the model and vocabulary. Model sizes are read from the saved weights, and `vocab_path` is only needed for checkpoints that do not contain a vocabulary. To resume training, `load_checkpoint(model, optimizer, path)` restores the weights and optimizer state.
+
+## Inference and caption generation
+
+The caption generation utility is in `utils/visualization.py`.
+
+The function `generate_caption` performs greedy decoding:
+
+- start with `<SOS>`
+- encode the image once
+- initialize hidden state and cell state to zeros
+- at each step:
+  - embed the current word
+  - compute attention context with current hidden state
+  - concatenate embedding and context
+  - pass to `LSTMCell`
+  - project hidden state to vocabulary logits
+  - choose the argmax token
+  - stop when `<EOS>` is reached or max length is reached
+
+The function `generate_caption_with_attention` returns both the predicted caption and the attention weights recorded during generation.
+
+## BLEU evaluation
+
+The evaluation utility is implemented in `utils/evaluation.py`.
+
+It computes:
+
+- BLEU-1
+- BLEU-4
+
+using `nltk.translate.bleu_score.corpus_bleu` (BLEU-4 uses smoothing).
+
+Evaluation runs on COCO `val2017` images the model was not trained on, and each image is scored against all of its human reference captions. The script `inference/metric_eval.py` wraps this with a CLI that expects a local COCO dataset and a checkpoint.
+Compare checkpoints with the same `--num-images` so the numbers are comparable.
+
+## Attention visualization
+
+The attention visualization logic is in `utils/visualization.py`.
+
+`visualize_attention(image, caption, alphas)` does the following:
+
+1. Converts the image tensor back to a NumPy image.
+2. Reverses the normalization to show the original image colors approximately.
+3. Reshapes each attention map to a 2D spatial grid.
+4. Resizes it to the original image dimensions.
+5. Plots the image and attention overlay for each generated word.
+
+This provides a qualitative map of the attention locations used during caption generation.
+
+## Inference scripts
+
+The repository includes several execution-oriented scripts. Run them from the project root with `python -m` (for the scripts inside `inference/`) so that the `models/` and `utils/` packages are found.
+
+### `train.py`
+
+Main training entry point.
+
+```bash
+python train.py --dataset-dir "D:\path\to\coco2017" --epochs 10 --batch-size 64 --subset-size 100000 --checkpoint-dir checkpoints_custom
+```
+
+### `inference/caption_pred.py`
+
+Generates a caption for a single image from a checkpoint and shows the attention map for each word.
+
+```bash
+python -m inference.caption_pred --image "D:\path\to\image.jpg" --checkpoint checkpoints_custom/checkpoint_img_caption.pth
+```
+
+Useful options: `--vocab checkpoints_custom/vocab.txt` (only for checkpoints without a built-in vocabulary), `--no-plot` (print the caption only), `--save out.png` (save the attention figure).
+
+### `inference/metric_eval.py`
+
+Evaluates a trained model with BLEU on COCO `val2017`.
+
+```bash
+python -m inference.metric_eval --dataset-dir "D:\path\to\coco2017" --checkpoint checkpoints_custom/checkpoint_img_caption.pth --num-images 500
+```
+
+## Dependencies
+
+The project relies on the packages listed in `requirements.txt`:
+
+- `numpy==1.25.0`
+- `matplotlib==3.8.0`
+- `Pillow==10.1.0`
+- `tqdm==4.66.1`
+- `torch==2.1.0`
+- `torchvision==0.16.0`
+- `nltk==3.8.1`
+
+This is the actual dependency set used by the project source files.
+
+## Environment notes
+
+The project is designed to run with Python 3.11 and the installed PyTorch/TorchVision versions in the working environment. CUDA is optional and selected automatically when available (a GPU is strongly recommended for training). The repository does not ship a custom training runtime or a Dockerfile.
+
+## Quick start
+
+1. Create a virtual environment:
+
+```bash
+python -m inference.metric_eval --dataset-dir path/to/coco2017 --checkpoint checkpoints_custom/checkpoint_img_caption.pth --num-images 500
+```
+
+This needs `val2017/` and `annotations/captions_val2017.json` (see [Training your own model](#training-your-own-model) for the layout).
+
 ---
 
-## Features
+## Training your own model
 
-- End-to-end image captioning: raw image → generated English caption.
-- Bahdanau (additive) soft attention with per-word heatmap visualisation.
-- Data preprocessing pipeline: tokenisation, vocabulary construction (frequency thresholding), numericalisation, and padded collation.
-- Checkpoint save/resume for training.
-- Vocabulary serialisation to JSON for inference without raw annotations.
-- CLI entry points for training, evaluation, captioning, and attention visualisation.
+### 1. Get the dataset
+
+Download **MS COCO 2017** from [cocodataset.org](https://cocodataset.org/#download): the *2017 Train images*, *2017 Val images* and *2017 Train/Val annotations*. Arrange them like this:
+
+```text
+coco2017/
+├── train2017/                       # about 118,000 training images
+├── val2017/                         # about 5,000 validation images (for BLEU)
+└── annotations/
+    ├── captions_train2017.json
+    └── captions_val2017.json
+```
+
+Each image has about five human-written captions.
+
+### 2. Train
+
+```bash
+python train.py --dataset-dir path/to/coco2017 --epochs 10 --batch-size 64 --subset-size 100000 --checkpoint-dir checkpoints_custom
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--dataset-dir` | `data/coco2017` | COCO root folder |
+| `--epochs` | `10` | Passes over the selected captions |
+| `--batch-size` | `64` | Samples per training step |
+| `--subset-size` | `100000` | Number of training captions to use. `0` = use all (about 590,000) |
+| `--lr` | `4e-4` | AdamW learning rate with a cosine schedule |
+| `--val-subset-size` | `5000` | Number of validation captions. `0` = skip validation |
+| `--weight-decay` | `1e-4` | AdamW weight decay |
+| `--seed` | `42` | Random seed |
+| `--no-amp` | disabled | Disable automatic mixed precision |
+| `--freq-threshold` | `5` | Minimum word count to enter the vocabulary |
+| `--num-workers` | `0` on Windows, `2` elsewhere | Data-loading worker processes |
+| `--checkpoint-dir` | `checkpoints_custom` | Where the outputs are written |
+| `--resume FILE` | none | Continue from a saved checkpoint |
+
+What happens:
+
+1. All training captions are read and the vocabulary is built and saved to `checkpoints_custom/vocab.txt`.
+2. The first captions (up to `--subset-size`) are used for training.
+3. After **every epoch**, validation runs on up to `--val-subset-size` captions.
+4. The checkpoint is saved to `checkpoints_custom/checkpoint_img_caption.pth`, and the best validation checkpoint is saved to `checkpoints_custom/checkpoint_best.pth`.
+5. `metrics.json` and a loss curve with train and validation lines are written to `checkpoints_custom/`.
+
+Tips:
+
+- **Use a GPU.** A free [Kaggle](https://www.kaggle.com) notebook GPU works well: add a COCO 2017 dataset, switch on the GPU and Internet, and point `--dataset-dir` at the dataset folder.
+- Do a **quick test first** with `--epochs 1 --subset-size 2000` to check that everything runs and to measure the time per epoch.
+- More captions and more epochs give the from-scratch CNN more training data and updates.
+- The checkpoint contains the trainable CNN and optimizer state.
 
 ---
 
-## Evaluation Metrics
+## Checkpoint and vocabulary files
 
-The code computes BLEU-1 and BLEU-4 using NLTK's `corpus_bleu`. These n-gram precision metrics measure how closely the generated captions match reference captions, with BLEU-4 requiring matching 4-gram phrases and thus being a stricter measure.
+A checkpoint (`.pth`) is a PyTorch file that stores:
 
----
+| Key | Content |
+|---|---|
+| `epoch` | Index of the last finished epoch |
+| `model_state_dict` | All model weights |
+| `optimizer_state_dict` | Optimizer state, needed only to resume training |
+| `scheduler_state_dict` | Cosine learning-rate scheduler state |
+| `loss` | Average training loss of that epoch |
+| `val_loss` | Validation loss of that epoch |
+| `vocab_itos` | The vocabulary (index to word), so the file is self-contained |
 
-## Limitations
+`vocab.txt` holds the same vocabulary as text, one `index:word` pair per line:
 
-See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) for a full list. Key points:
+```text
+0:<PAD>
+1:<SOS>
+2:<EOS>
+3:<UNK>
+4:a
+5:man
+...
+```
 
-- The reported BLEU scores (BLEU-1 = 0.39, BLEU-4 = 0.13) are from the author's original run; the exact evaluation setup is not recorded in the repository.
-- The evaluation script runs on training data, not a held-out split.
-- Only training loss is plotted (no validation curve).
-- The encoder is trained from scratch (no pretrained backbone).
-- Decoding is greedy only.
+For inference, `utils.checkpoint.load_for_inference(...)` rebuilds the model from the file. It reads the layer sizes from the saved weights themselves, so you do not have to pass the model dimensions.
 
----
+Good to know:
 
-## Roadmap
-
-- [ ] Beam search decoding
-- [ ] Pretrained ResNet / EfficientNet encoder (transfer learning)
-- [ ] Held-out evaluation on COCO val2017 with all 5 reference captions per image
-- [ ] CIDEr and METEOR metrics
-- [ ] Transformer-based decoder
-- [ ] Web demo for real-time captioning
-
----
-
-## Learning Outcomes
-
-- Implemented an encoder–decoder architecture with attention from scratch.
-- Understood how additive attention works and how to visualise it as heatmaps.
-- Extracted spatial image features using a custom CNN.
-- Generated text sequences with an LSTMCell decoder and teacher forcing.
-- Evaluated caption quality using BLEU metrics.
-- Built an end-to-end data pipeline (COCO JSON → tokenisation → numericalisation → batched DataLoader).
+- A `.pth` file is secretly a **zip archive**. If a download or unzip tool *extracts* it, you end up with a folder named `checkpoint_img_caption.pth` that contains `data.pkl`, `data/` and so on, and loading fails with `Permission denied`. Download the file again, or rebuild it with `python scripts/repack_pth.py <unpacked_folder> <new_file.pth>`.
+- The vocabulary and the checkpoint **must come from the same training run**.
+- Checkpoints from the older small-CNN version of this project do not fit the current model.
 
 ---
 
-## Resume / Blurb
+## API reference
 
-> Developed an end-to-end image captioning system using a CNN encoder and LSTM decoder trained on MS COCO with 20,000+ images and 90,000+ captions. Integrated Bahdanau attention to improve caption relevance and visualise word-level focus regions, strengthening computer vision–NLP alignment. Built an end-to-end data preprocessing pipeline with vocabulary construction (5K+ tokens), optimised with cross-entropy loss; achieved BLEU-1: 0.39 and BLEU-4: 0.13.
+The server (`app/server.py`) exposes two endpoints and also serves the web page from the `web/` folder.
 
----
+### `GET /api/health`
 
-## Built By
+Returns `{"status": "ok"}` once the server is running. The web page calls it on load to wake up a sleeping host.
 
-Rishit Modi
+### `POST /api/caption`
+
+Upload an image as multipart form data in a field named `file`.
+
+```bash
+python train.py --dataset-dir "D:\data\coco2017" --epochs 10 --batch-size 64 --subset-size 100000 --checkpoint-dir checkpoints_custom
+```
+
+6. Generate a caption for an image:
+
+```bash
+python -m inference.caption_pred --image "D:\path\to\image.jpg" --checkpoint checkpoints_custom/checkpoint_img_caption.pth
+```
+
+## Example outputs
+
+The repository includes example result images under `images/`. They show the project’s output format and the expected visualization style, but they are not a substitute for a trained checkpoint or a local COCO dataset.
+
+## Known project limitations
+
+- The project expects a local COCO dataset and does not include training data in the repository.
+- There is no packaged trained model checkpoint in the repo.
+- There is no web UI, API, or notebook-based demo packaged as a service.
+- Training and evaluation are script-based rather than abstracted into a CLI framework.
+- The implementation is intentionally minimal and focused on core research functionality rather than production polish.
+- The caption generation process is greedy and uses the most probable next token at each step (no beam search).
+- The from-scratch CNN needs enough data and epochs to train well.
+- It has not yet been compared on BLEU with the earlier encoder version.
+
+## Architecture diagram
+
+```mermaid
+flowchart LR
+    A[Input Image] --> B[Resize + Normalize]
+    B --> C[Custom CNN Encoder - ResNet-50-style]
+    C --> D[Spatial Feature Map]
+    D --> E[Additive Attention]
+    E --> F[Context Vector]
+    F --> G[LSTMCell Decoder]
+    G --> H[Vocabulary Projection]
+    H --> I[Next Token]
+    I --> G
+    I --> J[Generated Caption]
+```
+
+## Summary
+
+This repository implements a compact, training-capable image captioning system in PyTorch. It uses a custom ResNet-50-style CNN encoder, additive soft attention, and an LSTM-based decoder to generate captions from COCO image-caption pairs. The code is designed to be understandable and practical for study, experimentation, and further refinement, rather than for deployment as a commercial-grade product.
+
+## Contributors
+
+<!-- List the team members here. -->

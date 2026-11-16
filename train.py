@@ -1,137 +1,155 @@
-import torch
-from torch.nn.utils.rnn import pad_sequence
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, Subset
-import torchvision.transforms as transforms
+import argparse
 import os
-import json
-from models import combined_model
-from utils import dataset 
+from functools import partial
+from pathlib import Path
 
-def save_checkpoint(model, optimizer, epoch, loss, path="checkpoint_img_caption.pth"):
-    torch.save({
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'loss': loss
-    }, path)
+import matplotlib
+
+matplotlib.use("Agg")  # save the loss plot to a file; a window would block the script
+import matplotlib.pyplot as plt  # noqa: E402
+import torch  # noqa: E402
+import torch.nn as nn  # noqa: E402
+import torch.optim as optim  # noqa: E402
+from torch.utils.data import DataLoader, Subset  # noqa: E402
+from tqdm import tqdm  # noqa: E402
+
+from models.combined_model import CombinedModel  # noqa: E402
+from utils.checkpoint import load_checkpoint, save_checkpoint  # noqa: E402
+from utils.dataset import CocoDataset, build_transform, collate_fn, load_coco_pairs  # noqa: E402
+from utils.vocab import Vocabulary  # noqa: E402
+
+EMBED_SIZE, HIDDEN_SIZE, ATTENTION_DIM = 256, 512, 256
 
 
-def load_checkpoint(model, optimizer, path="checkpoint.pth"):
-    checkpoint = torch.load(path, map_location="cpu")
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    return checkpoint['epoch'], checkpoint['loss']
-
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-
-def train_model(model, dataloader, criterion, optimizer, vocab, device, num_epochs=1):
+def train_model(model, dataloader, criterion, optimizer, vocab, device, num_epochs,
+                start_epoch=0, checkpoint_path=None, plot_path=None):
     model.to(device)
     train_losses = []
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         model.train()
-        total_loss = 0
+        total_loss = 0.0
 
-        loop = tqdm(dataloader, desc=f"Epoch [{epoch+1}/{num_epochs}]", leave=False)
+        loop = tqdm(dataloader, desc=f"Epoch [{epoch + 1}/{num_epochs}]", leave=False)
         for images, captions in loop:
             images = images.to(device)
             captions = captions.to(device)
-        
-            outputs = model(images, captions[:, :-1])
+
+            # The decoder shifts the captions itself (its inputs are captions[:, :-1]),
+            # so pass the full captions here and compare against captions[:, 1:].
+            outputs = model(images, captions)
             targets = captions[:, 1:]
-        
-            # Handle possible mismatch
-            min_len = min(outputs.size(1), targets.size(1))
-            outputs = outputs[:, :min_len, :]
-            targets = targets[:, :min_len]
-        
-            outputs = outputs.reshape(-1, outputs.shape[2])
-            targets = targets.reshape(-1)
-        
+            loss = criterion(outputs.reshape(-1, outputs.size(-1)), targets.reshape(-1))
+
             optimizer.zero_grad()
-            loss = criterion(outputs, targets)
             loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
+
             total_loss += loss.item()
             loop.set_postfix(loss=loss.item())
 
-        avg_loss = total_loss / len(dataloader)
+        avg_loss = total_loss / max(len(dataloader), 1)
         train_losses.append(avg_loss)
-        print(f"Epoch [{epoch+1}/{num_epochs}] Avg Loss: {avg_loss:.4f}")
+        print(f"Epoch [{epoch + 1}/{num_epochs}] Avg Loss: {avg_loss:.4f}")
 
-        save_checkpoint(model, optimizer, epoch, avg_loss)
+        if checkpoint_path is not None:
+            save_checkpoint(model, optimizer, epoch, avg_loss, checkpoint_path, vocab=vocab)
 
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(1, num_epochs+1), train_losses, marker='o', color='blue')
-    plt.title("Training Loss over Epochs")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.grid(True)
-    plt.show()
+    if train_losses and plot_path is not None:
+        plt.figure(figsize=(8, 5))
+        plt.plot(range(start_epoch + 1, start_epoch + len(train_losses) + 1), train_losses, marker="o", color="blue")
+        plt.title("Training Loss over Epochs")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.grid(True)
+        plt.savefig(plot_path, bbox_inches="tight")
+        plt.close()
+        print(f"Loss curve saved to {plot_path}")
 
     return train_losses
 
-import matplotlib.pyplot as plt
-from PIL import Image
-import cv2
-import random
-import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def build_vocab_and_dataloader(dataset_dir, batch_size=64, subset_size=100000, freq_threshold=5, num_workers=0):
+    data_pairs = load_coco_pairs(dataset_dir, "train2017")
 
-# Define paths and prepare dataset
-datasetpath = "/kaggle/input/coco-2017-dataset/coco2017"
-trainimagepath = os.path.join(datasetpath, "train2017")
-annotationspath = os.path.join(datasetpath, "annotations")
-captionsjsonpath = os.path.join(annotationspath, "captions_train2017.json")
+    vocab = Vocabulary(freqthreshold=freq_threshold)
+    vocab.buildvocabulary([caption for _, caption in data_pairs])
 
-with open(captionsjsonpath, "r") as f:
-    captionsjson = json.load(f)
+    dataset = CocoDataset(data_pairs, vocab, transform=build_transform())
+    use = min(subset_size, len(dataset)) if subset_size and subset_size > 0 else len(dataset)
 
-idtofilename = {img["id"]: img["file_name"] for img in captionsjson["images"]}
-
-data_pairs = []
-for ann in captionsjson["annotations"]:
-    img_id = ann["image_id"]
-    if img_id in idtofilename:
-        data_pairs.append((os.path.join(trainimagepath, idtofilename[img_id]), ann["caption"]))
-
-all_captions = [cap for _, cap in data_pairs]
-vocab = Vocabulary(freqthreshold=5)
-vocab.buildvocabulary(all_captions)
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
+    dataloader = DataLoader(
+        Subset(dataset, list(range(use))),
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=partial(collate_fn, vocab=vocab),
+        num_workers=num_workers,
+        pin_memory=torch.cuda.is_available(),
+        persistent_workers=num_workers > 0,
     )
-])
+    print(f"Training on {use} captions ({len(dataloader)} batches per epoch), vocabulary size {len(vocab)}")
+    return vocab, dataloader
 
-dataset = CocoDataset(data_pairs, vocab, transform=transform)
-subset_dataset = Subset(dataset, list(range(60000)))
 
-dataloader = DataLoader(
-    subset_dataset,
-    batch_size=32,
-    shuffle=True,
-    collate_fn=collate_fn
-)
+def main():
+    parser = argparse.ArgumentParser(description="Train an image captioning model.")
+    parser.add_argument("--dataset-dir", type=str, default="data/coco2017", help="COCO root containing train2017/ and annotations/")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
+    parser.add_argument("--batch-size", type=int, default=64, help="Training batch size.")
+    parser.add_argument("--subset-size", type=int, default=100000, help="Number of training captions to use. 0 = use all.")
+    parser.add_argument("--lr", type=float, default=4e-4, help="Learning rate.")
+    parser.add_argument("--freq-threshold", type=int, default=5, help="Minimum word frequency for the vocabulary.")
+    parser.add_argument("--num-workers", type=int, default=0 if os.name == "nt" else 2, help="DataLoader worker processes.")
+    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints_custom", help="Where checkpoint_img_caption.pth and vocab.txt are written.")
+    parser.add_argument("--resume", type=str, default=None, help="Checkpoint to continue training from.")
+    args = parser.parse_args()
 
-embed_size = 256
-hidden_size = 512
-vocab_size = len(vocab)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
+    checkpoint_dir = Path(args.checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / "checkpoint_img_caption.pth"
+    if checkpoint_path.exists() and not args.resume:
+        raise FileExistsError(
+            f"{checkpoint_path} already exists; pass --resume to continue training instead of overwriting it."
+        )
 
-model = CombinedModel(embed_size, hidden_size, vocab_size).to(device)
+    vocab, dataloader = build_vocab_and_dataloader(
+        dataset_dir=args.dataset_dir,
+        batch_size=args.batch_size,
+        subset_size=args.subset_size,
+        freq_threshold=args.freq_threshold,
+        num_workers=args.num_workers,
+    )
+    vocab_path = checkpoint_dir / "vocab.txt"
+    vocab.save(vocab_path)
+    print(f"Vocabulary saved to {vocab_path}")
 
-criterion = nn.CrossEntropyLoss(ignore_index=vocab.stoi["<PAD>"])
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    model = CombinedModel(EMBED_SIZE, HIDDEN_SIZE, len(vocab), ATTENTION_DIM).to(device)
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab.stoi["<PAD>"])
+    optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad], lr=args.lr)
 
-# Train
-train_model(model, dataloader, criterion, optimizer, vocab, device, num_epochs=60)
+    start_epoch = 0
+    if args.resume:
+        last_epoch, last_loss = load_checkpoint(model, optimizer, args.resume)
+        start_epoch = last_epoch + 1
+        print(f"Resuming after epoch {last_epoch + 1} (loss {last_loss:.4f})")
+
+    train_model(
+        model=model,
+        dataloader=dataloader,
+        criterion=criterion,
+        optimizer=optimizer,
+        vocab=vocab,
+        device=device,
+        num_epochs=args.epochs,
+        start_epoch=start_epoch,
+        checkpoint_path=str(checkpoint_path),
+        plot_path=str(checkpoint_dir / "loss_curve.png"),
+    )
+    print(f"Done. Model: {checkpoint_path}   Vocabulary: {vocab_path}")
+
+
+if __name__ == "__main__":
+    main()

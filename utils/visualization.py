@@ -1,89 +1,71 @@
+import math
+
 import matplotlib.pyplot as plt
-from PIL import Image
-import cv2
-import random
-import torch
 import numpy as np
+import torch
+from PIL import Image
 
-# model.eval()
 
-def generate_caption(model, image, vocab, max_len=20, device="cuda"):
+def _default_device():
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+@torch.no_grad()
+def generate_caption_with_attention(model, image, vocab, max_len=20, device=None):
+    """Greedy decoding. Returns the caption (list of words) and one attention map per word."""
+    device = device or _default_device()
     model.eval()
-    with torch.no_grad():
-        encoder_out = model.encoder(image.unsqueeze(0).to(device))
-        h = torch.zeros(1, model.decoder.lstm.hidden_size).to(device)
-        c = torch.zeros(1, model.decoder.lstm.hidden_size).to(device)
-        word = torch.tensor([vocab.stoi["<SOS>"]]).to(device)
-        caption = []
-        for _ in range(max_len):
-            emb = model.decoder.embedding(word)
-            context, _ = model.decoder.attention(encoder_out, h)
-            lstm_input = torch.cat([emb, context], dim=1)
-            h, c = model.decoder.lstm(lstm_input, (h, c))
-            output = model.decoder.fc(h)
-            predicted = output.argmax(1)
-            word = predicted
-            predicted_word = vocab.itos[predicted.item()]
-            if predicted_word == "<EOS>":
-                break
-            caption.append(predicted_word)
-        return caption
+    encoder_out = model.encoder(image.unsqueeze(0).to(device))
+    h = torch.zeros(1, model.decoder.lstm.hidden_size, device=device)
+    c = torch.zeros(1, model.decoder.lstm.hidden_size, device=device)
+    word = torch.tensor([vocab.stoi["<SOS>"]], device=device)
 
-def generate_caption_with_attention(model, image, vocab, max_len=20, device="cuda"):
-    """
-    Generates caption and attention weights for a single image.
-    Returns:
-        caption: list of predicted words
-        alphas: list of attention maps (num_pixels) for each word
-    """
-    model.eval()
-    with torch.no_grad():
-        image = image.unsqueeze(0).to(device)  # (1, C, H, W)
-        encoder_out = model.encoder(image)     # (1, num_pixels, embed_size)
-        h = torch.zeros(1, model.decoder.lstm.hidden_size).to(device)
-        c = torch.zeros(1, model.decoder.lstm.hidden_size).to(device)
-        word = torch.tensor([vocab.stoi["<SOS>"]]).to(device)
-
-        caption = []
-        alphas = []
-
-        for _ in range(max_len):
-            emb = model.decoder.embedding(word)          # (1, embed_size)
-            context, alpha = model.decoder.attention(encoder_out, h)  # context: (1, embed_size)
-            lstm_input = torch.cat([emb, context], dim=1)
-            h, c = model.decoder.lstm(lstm_input, (h, c))
-            output = model.decoder.fc(h)
-            predicted = output.argmax(1)
-            word = predicted
-            predicted_word = vocab.itos[predicted.item()]
-            if predicted_word == "<EOS>":
-                break
-            caption.append(predicted_word)
-            alphas.append(alpha.cpu().view(-1).numpy())  # flatten for resizing
-
+    caption = []
+    alphas = []
+    for _ in range(max_len):
+        emb = model.decoder.embedding(word)
+        context, alpha = model.decoder.attention(encoder_out, h)
+        h, c = model.decoder.lstm(torch.cat([emb, context], dim=1), (h, c))
+        word = model.decoder.fc(h).argmax(1)
+        predicted_word = vocab.itos[word.item()]
+        if predicted_word == "<EOS>":
+            break
+        caption.append(predicted_word)
+        alphas.append(alpha.cpu().view(-1).numpy())
     return caption, alphas
 
 
-def visualize_attention(image, caption, alphas):
+def generate_caption(model, image, vocab, max_len=20, device=None):
+    """Greedy decoding. Returns only the caption (list of words)."""
+    return generate_caption_with_attention(model, image, vocab, max_len, device)[0]
 
-    img_np = image.permute(1, 2, 0).cpu().numpy()  # (H, W, C)
+
+def visualize_attention(image, caption, alphas, cols=5, save_path=None):
+    """Show (and optionally save) the image with one attention overlay per generated word."""
+    if not caption:
+        print("The model produced an empty caption, nothing to visualise.")
+        return
+
+    img_np = image.permute(1, 2, 0).cpu().numpy()
     img_np = img_np * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])
     img_np = np.clip(img_np, 0, 1)
+    height, width = img_np.shape[:2]
 
-    num_words = len(caption)
-    plt.figure(figsize=(3*num_words, 3))
+    rows = math.ceil(len(caption) / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(3 * cols, 3 * rows))
+    axes = np.array(axes).reshape(-1)
+    for ax in axes:
+        ax.axis("off")
 
     for i, word in enumerate(caption):
-        plt.subplot(1, num_words, i+1)
-        plt.imshow(img_np)
-        att_map = alphas[i].squeeze()
-        # Reshape attention map assuming square feature map
-        H = W = int(np.sqrt(att_map.shape[0]))
-        att_map = att_map.reshape(H, W)
-        # Resize attention map to image size
-        att_map_resized = cv2.resize(att_map, (img_np.shape[1], img_np.shape[0]))
-        plt.imshow(att_map_resized, alpha=0.6, cmap='jet')
-        plt.axis('off')
-        plt.title(word)
-    plt.show()
+        side = int(round(math.sqrt(alphas[i].shape[0])))
+        att_map = alphas[i].reshape(side, side).astype(np.float32)
+        att_resized = np.array(Image.fromarray(att_map).resize((width, height), resample=Image.BILINEAR))
+        axes[i].imshow(img_np)
+        axes[i].imshow(att_resized, alpha=0.5, cmap="jet")
+        axes[i].set_title(word)
 
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight", dpi=150)
+    plt.show()
